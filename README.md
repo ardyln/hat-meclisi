@@ -103,3 +103,7 @@ The tests cover the cooldown, authorship, corridors and alternatives, edits that
 - Lines imported from OpenStreetMap are © OpenStreetMap contributors under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/). A database containing them is a derivative database, so it must keep that attribution and stay under the ODbL. Each imported line links back to its OSM relation.
 - Imports query the public [Overpass API](https://overpass-api.de/), which is shared and rate-limited. Large areas can take a minute, and busy times can fail. Try again later.
 - [Leaflet](https://leafletjs.com/) 1.9.4 (BSD-2-Clause) is vendored in `vendor/leaflet`. The Firebase JS SDK 10.12.2 is loaded from Google's CDN.
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE). Leaflet (in `vendor/leaflet`) keeps its own BSD-2-Clause license.
