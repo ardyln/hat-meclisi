@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hat Meclisi</title>
+  <meta name="description" content="Türkiye için ortak raylı sistem ve toplu taşıma planı: hat çiz, alternatif güzergâh öner, oy ver.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 26 L14 12 L28 12' fill='none' stroke='%23e3051b' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='14' cy='12' r='4' fill='%23fff' stroke='%23222' stroke-width='2.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="bar">
+    <button id="btn-panel" class="icon only-narrow" aria-controls="panel" aria-expanded="false" data-i18n-title="panel">☰</button>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 26 L14 12 L28 12" fill="none" stroke="#e3051b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="12" r="4" fill="#fff" stroke="#222" stroke-width="2.5"/></svg>
+      <div><b data-i18n="title"></b><small data-i18n="tagline"></small></div>
+    </div>
+    <span id="status" class="status"></span>
+    <div class="spacer"></div>
+    <button id="btn-new" class="primary" data-i18n="newLine"></button>
+    <button id="btn-import" data-i18n="import"></button>
+    <button id="btn-nick" class="ghost" data-i18n-title="nickname"></button>
+    <button id="btn-lang" class="ghost" data-i18n="language"></button>
+  </header>
+
+  <main>
+    <aside id="panel">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="props" data-i18n="proposals"></button>
+        <button role="tab" data-tab="exist" data-i18n="existing"></button>
+        <button role="tab" data-tab="feed" data-i18n="feed"></button>
+      </nav>
+      <div class="view-opts">
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="view" value="win" checked><span data-i18n="viewWinners"></span></label>
+          <label><input type="radio" name="view" value="all"><span data-i18n="viewAll"></span></label>
+        </div>
+        <label class="check"><input type="checkbox" id="opt-existing" checked><span data-i18n="showExisting"></span></label>
+        <label class="check"><input type="checkbox" id="opt-negative" checked><span data-i18n="hideNegative"></span></label>
+        <label class="check"><input type="checkbox" id="opt-orm"><span data-i18n="orm"></span></label>
+      </div>
+      <input id="search" type="search" data-i18n-ph="search">
+      <div id="list" class="list"></div>
+    </aside>
+
+    <div id="map"></div>
+
+    <section id="detail" class="card" hidden></section>
+    <section id="editor" class="card sheet" hidden></section>
+    <section id="importer" class="card sheet" hidden></section>
+  </main>
+
+  <dialog id="dlg-nick">
+    <form method="dialog">
+      <h2 data-i18n="nickTitle"></h2>
+      <p data-i18n="nickHelp"></p>
+      <input id="nick-input" maxlength="24" required>
+      <menu><button value="ok" class="primary" data-i18n="ok"></button></menu>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
