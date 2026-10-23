@@ -4,7 +4,7 @@
 import { createBackend, storageGet, storageSet } from './backend.js';
 import { t, setLang, lang, fmt, ago, date } from './i18n.js';
 import { EMPTY_CENTER, boundsOf, simplify } from './geo.js';
-import { MODES, MODE_KEYS, PALETTE, LIMITS, parseLine, serializeLine, toDraft, corridors, stats, lineToGeoJSON, stationsToGeoJSON } from './model.js';
+import { MODES, MODE_KEYS, PALETTE, LIMITS, parseLine, serializeLine, toDraft, corridors, stats, lineToGeoJSON, stationsToGeoJSON, pinStations } from './model.js';
 import { Editor } from './editor.js';
 import { fetchOSM, parseFile } from './importers.js';
 
@@ -405,6 +405,7 @@ const editor = new Editor(map, {
   t,
   otherStations: () => [...S.lines.values()].filter((l) => l.id !== S.editing?.id).flatMap((l) => l.stations),
   onChange: () => renderEditorStats(),
+  warn: (key) => toast(t(key)),
 });
 
 function nextColour() {
@@ -526,7 +527,7 @@ async function save() {
   if (!nick) return;
   const isNew = !ed.id;
   const id = ed.id || backend.newId();
-  const draft = { ...d, segs };
+  const draft = { ...d, segs, stations: pinStations(segs, d.stations) };
   if (draft.kind === 'p' && !draft.corridor) draft.corridor = id;
   if (draft.kind === 'e') draft.corridor = null;
   const node = serializeLine(draft, backend.uid, nick);
@@ -699,7 +700,8 @@ async function loadFile(e) {
 // Lines too detailed for one database node are simplified harder before giving up.
 function fitNode(draft, uid, nick) {
   for (const tol of [0, 25, 60, 150]) {
-    const d = tol ? { ...draft, segs: draft.segs.map((s) => simplify(s, tol)) } : draft;
+    const segs = tol ? draft.segs.map((s) => simplify(s, tol)) : draft.segs;
+    const d = tol ? { ...draft, segs, stations: pinStations(segs, draft.stations) } : draft;
     const node = serializeLine(d, uid, nick);
     if (node.p.length <= LIMITS.geom && node.s.length <= LIMITS.stations) return node;
   }

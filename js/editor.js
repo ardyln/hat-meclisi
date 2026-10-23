@@ -1,21 +1,25 @@
 // The line editor: draws a draft on the map and lets the user shape it.
 //
 // Tools:  draw     tap the map to extend the active branch
-//         station  tap to place a station (snaps onto the line, or onto another
-//                  line's station to make a transfer, taking over its name)
+//         station  tap the line to place a station. Stations only ever sit on the
+//                  line: tapping a nearby station of another line routes this
+//                  line through it (a transfer, taking over its name)
 //         move     only drag things around
 // Vertices and the "+" handles between them are draggable; tapping a vertex or a
-// station opens a small menu. Every change is undoable.
+// station opens a small menu. Every change is undoable. After any change each
+// station moves to the nearest point of the line, so reshaping the line carries its
+// stations along.
 
-import { nearestOnSegs, round5 } from './geo.js';
+import { distance, nearestOnSegs, round5 } from './geo.js';
 
 const SNAP_PX = 18;
 const MAX_VERTEX_MARKERS = 400;
 
 export class Editor {
-  constructor(map, { t, otherStations, onChange }) {
+  constructor(map, { t, otherStations, onChange, warn }) {
     this.map = map;
     this.t = t;
+    this.warn = warn;
     this.otherStations = otherStations;
     this.onChange = onChange;
     this.layer = L.layerGroup();
@@ -33,6 +37,7 @@ export class Editor {
     if (!draft.segs.length) draft.segs.push([]);
     this.active = draft.segs.length - 1;
     this.undoStack = [];
+    this.pin();
     this.layer.addTo(this.map);
     this.vtxLayer.addTo(this.map);
     this.map.on('click', this.onClick);
@@ -61,6 +66,7 @@ export class Editor {
     const c = this.map.getContainer().classList;
     c.remove('hm-tool-draw', 'hm-tool-station', 'hm-tool-move');
     c.add(`hm-tool-${tool}`);
+    if (this.draft) this.renderVertices();
     this.onChange?.(this.draft, { tool });
   }
 
@@ -80,6 +86,7 @@ export class Editor {
   }
 
   changed() {
+    this.pin();
     this.render();
     this.onChange?.(this.draft, {});
   }
@@ -92,6 +99,36 @@ export class Editor {
   }
 
   px(ll) { return this.map.latLngToContainerPoint(L.latLng(ll[0], ll[1])); }
+
+  // Puts every station on the nearest point of the line (in place, so open station
+  // menus keep editing the right object).
+  pin() {
+    for (const s of this.draft.stations) {
+      const n = nearestOnSegs(this.draft.segs, [s.lat, s.lng]);
+      if (n) {
+        s.lat = round5(n.point[0]);
+        s.lng = round5(n.point[1]);
+      }
+    }
+  }
+
+  // Another line's station counts as reachable if it lies within a short tap of this
+  // line (or just past one of its ends).
+  reachable(st) {
+    const n = nearestOnSegs(this.draft.segs, [st.lat, st.lng]);
+    return n && this.px(n.point).distanceTo(this.px([st.lat, st.lng])) <= SNAP_PX * 2 ? n : null;
+  }
+
+  // Bends (or extends) the line through p, so a transfer station sits on both lines.
+  throughPoint(p, n = nearestOnSegs(this.draft.segs, p)) {
+    if (!n) return;
+    const seg = this.draft.segs[n.seg];
+    const q = [round5(p[0]), round5(p[1])];
+    if (distance(seg[n.i], q) < 2 || distance(seg[n.i + 1], q) < 2) return;
+    if (n.i === 0 && n.t === 0) seg.unshift(q);
+    else if (n.i === seg.length - 2 && n.t === 1) seg.push(q);
+    else seg.splice(n.i + 1, 0, q);
+  }
 
   // Nearest other line's station within the snap radius, for transfers.
   snapToStation(latlng) {
@@ -137,15 +174,23 @@ export class Editor {
   }
 
   addStation(latlng) {
-    this.snapshot();
-    const other = this.snapToStation(latlng);
+    if (!this.draft.segs.some((s) => s.length >= 2)) return this.warn?.('stationNeedsLine');
+    const near = this.snapToStation(latlng);
+    if (near && this.draft.stations.includes(near)) return this.stationMenu(this.draft.stations.indexOf(near));
+    if (near) {
+      const n = this.reachable(near);
+      if (!n) return this.warn?.('stationOffLine');
+      this.snapshot();
+      this.throughPoint([near.lat, near.lng], n);
+      this.draft.stations.push({ lat: near.lat, lng: near.lng, name: near.name || '' });
+      return this.changed();
+    }
     const onLine = this.snapToDraft(latlng);
-    const p = other ? [other.lat, other.lng] : onLine || [latlng.lat, latlng.lng];
-    const st = { lat: round5(p[0]), lng: round5(p[1]), name: other?.name || '' };
-    if (!other && !st.name) st.name = `${this.t('station')} ${this.draft.stations.length + 1}`;
-    this.draft.stations.push(st);
+    if (!onLine) return this.warn?.('stationOffLine');
+    this.snapshot();
+    this.draft.stations.push({ lat: round5(onLine[0]), lng: round5(onLine[1]), name: `${this.t('station')} ${this.draft.stations.length + 1}` });
     this.changed();
-    if (!other) this.stationMenu(this.draft.stations.length - 1, true);
+    this.stationMenu(this.draft.stations.length - 1, true);
   }
 
   newBranch() {
@@ -207,13 +252,21 @@ export class Editor {
         m.bindTooltip(tip, { direction: 'top', offset: [0, -8] });
       }
       m.on('dragstart', () => this.snapshot());
+      // Dropped anywhere, a station slides back onto the line (changed() pins it);
+      // dropped on a reachable station of another line, it becomes a transfer there.
       m.on('dragend', (e) => {
         const ll = e.target.getLatLng();
-        const snap = this.snapToStation(ll);
-        const onLine = this.snapToDraft(ll);
-        const p = snap && snap !== s ? [snap.lat, snap.lng] : onLine || [ll.lat, ll.lng];
-        s.lat = round5(p[0]);
-        s.lng = round5(p[1]);
+        const other = this.snapToStation(ll);
+        const n = other && !this.draft.stations.includes(other) ? this.reachable(other) : null;
+        if (n) {
+          this.throughPoint([other.lat, other.lng], n);
+          s.lat = other.lat;
+          s.lng = other.lng;
+          if (other.name && (!s.name || s.name.startsWith(`${this.t('station')} `))) s.name = other.name;
+        } else {
+          s.lat = ll.lat;
+          s.lng = ll.lng;
+        }
         this.changed();
       });
       m.on('click', () => this.stationMenu(i));
@@ -252,8 +305,9 @@ export class Editor {
       m.on('click', () => (this.tool === 'station' ? this.addStation(L.latLng(p[0], p[1])) : this.vertexMenu(i)));
       m.on('contextmenu', () => this.deleteVertex(i));
     });
-    // "+" handles halfway along each piece: drag one to bend the line there.
-    for (let i = 1; i < seg.length && shown < MAX_VERTEX_MARKERS; i++) {
+    // "+" handles halfway along each piece: drag one to bend the line there. Hidden
+    // while placing stations, so they don't catch taps meant for the line.
+    for (let i = 1; i < seg.length && shown < MAX_VERTEX_MARKERS && this.tool !== 'station'; i++) {
       const a = seg[i - 1], b = seg[i];
       const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
       if (!view.contains(mid) || this.px(a).distanceTo(this.px(b)) < 40) continue;

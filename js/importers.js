@@ -3,10 +3,13 @@
 //   { key, osm?, name, mode, color, segs, stations: [{lat, lng, name}], km }
 
 import { distance, nearestOnSegs, segsLength, simplify, round5 } from './geo.js';
-import { MODE_KEYS, PALETTE, LIMITS } from './model.js';
+import { MODE_KEYS, PALETTE, LIMITS, pinStations } from './model.js';
 
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const SIMPLIFY_M = 12;
+// Stops further than this from the track (e.g. a stray platform) are left out.
+const OSM_STOP_M = 150;
+const FILE_STOP_M = 500;
 
 const NAMED_COLOURS = {
   red: '#e3051b', blue: '#0072bc', green: '#00a651', yellow: '#ffd500', orange: '#f39200', purple: '#8e44ad',
@@ -165,7 +168,7 @@ out tags;`;
     }
     const segs = stitch(ways).map((sg) => simplify(sg, SIMPLIFY_M)).filter((sg) => sg.length >= 2);
     if (!segs.length) continue;
-    const stations = dedupeStations(stops.length ? stops : platforms);
+    const stations = dedupeStations(pinStations(segs, stops.length ? stops : platforms, OSM_STOP_M));
     const cand = {
       key: `osm-r${rel.id}`,
       osm: `r${rel.id}`,
@@ -196,10 +199,10 @@ function propMode(p) {
   return guessMode(v, { name: p.name || '', service: p.service || '' });
 }
 
-// Named points become stations of the nearest imported line within 500 m.
+// Named points become stations of the nearest imported line within FILE_STOP_M.
 function attachStations(cands, points) {
   for (const pt of points) {
-    let best = null, bestD = 500;
+    let best = null, bestD = FILE_STOP_M;
     for (const c of cands) {
       const n = nearestOnSegs(c.segs, [pt.lat, pt.lng]);
       if (n && n.d < bestD) { best = c; bestD = n.d; }
@@ -213,7 +216,7 @@ function finish(cands, points, prefix) {
   return cands
     .map((c, i) => {
       const segs = c.segs.map((sg) => simplify(sg, 3)).filter((sg) => sg.length >= 2);
-      return { ...c, key: `${prefix}${i}`, segs, stations: dedupeStations(c.stations), km: segsLength(segs) / 1000 };
+      return { ...c, key: `${prefix}${i}`, segs, stations: dedupeStations(pinStations(segs, c.stations, FILE_STOP_M)), km: segsLength(segs) / 1000 };
     })
     .filter((c) => c.segs.length);
 }

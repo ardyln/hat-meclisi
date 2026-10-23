@@ -11,7 +11,7 @@
 //   a  author uid         w  author nickname
 //   t0 created            t  last change (server timestamps)
 
-import { decodeSegs, encodeSegs, segsLength, round5 } from './geo.js';
+import { decodeSegs, encodeSegs, nearestOnSegs, segsLength, round5 } from './geo.js';
 
 // Rough construction cost in million € per km, only for the "estimated cost" figure.
 export const MODES = {
@@ -142,6 +142,17 @@ export function stats(segs, stations, mode) {
     spacing: stations.length > 1 ? km / (stations.length - 1) : 0,
     cost: km * (MODES[mode]?.cost || 0),
   };
+}
+
+// Stations sit on their line: moves each onto the nearest point of the line and
+// drops any further away than maxM metres.
+export function pinStations(segs, stations, maxM = Infinity) {
+  const out = [];
+  for (const s of stations) {
+    const n = nearestOnSegs(segs, [s.lat, s.lng]);
+    if (n && n.d <= maxM) out.push({ ...s, lat: round5(n.point[0]), lng: round5(n.point[1]) });
+  }
+  return out;
 }
 
 export function snapStation(lat, lng, name) {
